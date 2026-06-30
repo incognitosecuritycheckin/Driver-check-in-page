@@ -876,12 +876,9 @@ function loadGdConfig(onDone) {
 }
 
 function gdRefreshToken(onSuccess, onError) {
-  if (!GD_CONFIG || !GD_CONFIG.refreshToken) { onError('No Google Drive config'); return; }
-  // Check if access token still valid (with 60s buffer)
-  if (GD_CONFIG.accessToken && GD_CONFIG.expiresAt && Date.now() < GD_CONFIG.expiresAt - 60000) {
-    onSuccess(GD_CONFIG.accessToken);
-    return;
-  }
+  if (!GD_CONFIG || !GD_CONFIG.refreshToken) { onError('No Google Drive config — reconnect in the checklist builder.'); return; }
+  // Always exchange the refresh token for a fresh access token.
+  // The stored access token from AddInData is always stale by the time a driver submits.
   fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
