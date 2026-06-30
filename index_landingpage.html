@@ -955,15 +955,26 @@ function gdGetOrCreateFolder(accessToken, name, parentId, onSuccess, onError) {
   .catch(function(err) { onError(err.message); });
 }
 
+function showGdError(msg) {
+  console.error('[GD Upload]', msg);
+  var existing = document.getElementById('gdErrorBanner');
+  if (existing) existing.parentNode.removeChild(existing);
+  var banner = document.createElement('div');
+  banner.id = 'gdErrorBanner';
+  banner.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;font-size:13px;font-weight:600;padding:10px 18px;border-radius:12px;z-index:9999;max-width:90%;box-shadow:0 4px 16px rgba(0,0,0,0.12);';
+  banner.textContent = '⚠ Drive upload failed: ' + msg;
+  document.body.appendChild(banner);
+  setTimeout(function() { if (banner.parentNode) banner.parentNode.removeChild(banner); }, 10000);
+}
+
 function uploadItemPhotosToGoogleDrive(rec, itemPhotoList, onDone) {
   if (!itemPhotoList.length) { onDone(); return; }
-  if (!GD_CONFIG || !GD_CONFIG.refreshToken) { onDone(); return; }
+  if (!GD_CONFIG || !GD_CONFIG.refreshToken) { showGdError('No Drive config — reconnect Google Drive in the checklist builder.'); onDone(); return; }
 
   gdRefreshToken(function(accessToken) {
     var dateStr = rec.submittedAt.slice(0, 10);
     var vehicleName = rec.deviceName.replace(/[^a-zA-Z0-9 \-·]/g, '').trim();
 
-    // Reuse same folder structure, add 'items' subfolder
     gdGetOrCreateFolder(accessToken, 'Vehicle Check-In', null, function(rootId) {
       gdGetOrCreateFolder(accessToken, dateStr, rootId, function(dateId) {
         gdGetOrCreateFolder(accessToken, vehicleName, dateId, function(vehicleId) {
@@ -975,32 +986,30 @@ function uploadItemPhotosToGoogleDrive(rec, itemPhotoList, onDone) {
                 var entry = itemPhotoList[index];
                 var fileName = 'item_' + entry.itemId + '_photo' + (entry.idx + 1) + '.jpg';
                 gdUploadPhoto(accessToken, entry.photo, fileName, itemFolderId, function(fileId) {
-                  // Store Drive file ID back on the item
                   var item = rec.items.find(function(i) { return i.id === entry.itemId; });
                   if (item) {
                     if (!item.gdItemPhotoIds) item.gdItemPhotoIds = [];
                     item.gdItemPhotoIds.push(fileId);
                   }
                   index++; uploadNext();
-                }, function() { index++; uploadNext(); });
+                }, function(err) { showGdError('Item photo upload failed: ' + err); index++; uploadNext(); });
               }
               uploadNext();
-            }, function() { onDone(); });
-          }, function() { onDone(); });
-        }, function() { onDone(); });
-      }, function() { onDone(); });
-    }, function() { onDone(); });
-  }, function() { onDone(); });
+            }, function(err) { showGdError('Could not create item-photos folder: ' + err); onDone(); });
+          }, function(err) { showGdError('Could not create submission folder: ' + err); onDone(); });
+        }, function(err) { showGdError('Could not create vehicle folder: ' + err); onDone(); });
+      }, function(err) { showGdError('Could not create date folder: ' + err); onDone(); });
+    }, function(err) { showGdError('Could not create root folder: ' + err); onDone(); });
+  }, function(err) { showGdError('Token refresh failed (item photos): ' + err); onDone(); });
 }
 
 function uploadPhotosToGoogleDrive(rec, photoList, onDone) {
-  if (!GD_CONFIG || !GD_CONFIG.refreshToken) { onDone([]); return; }
+  if (!GD_CONFIG || !GD_CONFIG.refreshToken) { showGdError('No Drive config — reconnect Google Drive in the checklist builder.'); onDone([]); return; }
 
   gdRefreshToken(function(accessToken) {
     var dateStr = rec.submittedAt.slice(0, 10);
     var vehicleName = rec.deviceName.replace(/[^a-zA-Z0-9 \-·]/g, '').trim();
 
-    // Create folder structure: Vehicle Check-In / date / vehicle / resp-id
     gdGetOrCreateFolder(accessToken, 'Vehicle Check-In', null, function(rootId) {
       gdGetOrCreateFolder(accessToken, dateStr, rootId, function(dateId) {
         gdGetOrCreateFolder(accessToken, vehicleName, dateId, function(vehicleId) {
@@ -1011,25 +1020,25 @@ function uploadPhotosToGoogleDrive(rec, photoList, onDone) {
             function uploadNext() {
               if (index >= photoList.length) { onDone(fileIds); return; }
               var btn = document.getElementById('submitBtn');
-              btn.textContent = 'Uploading photo ' + (index + 1) + ' of ' + photoList.length + '...';
+              if (btn) btn.textContent = 'Uploading photo ' + (index + 1) + ' of ' + photoList.length + '...';
               var fileName = 'photo_' + (index + 1) + '.jpg';
               gdUploadPhoto(accessToken, photoList[index], fileName, submissionId, function(fileId) {
                 fileIds.push(fileId);
                 index++;
                 uploadNext();
               }, function(err) {
-                console.error('Photo upload failed:', err);
+                showGdError('Photo ' + (index + 1) + ' upload failed: ' + err);
                 index++;
                 uploadNext();
               });
             }
             uploadNext();
-          }, function(err) { console.error('Folder error:', err); onDone([]); });
-        }, function(err) { console.error('Folder error:', err); onDone([]); });
-      }, function(err) { console.error('Folder error:', err); onDone([]); });
-    }, function(err) { console.error('Root folder error:', err); onDone([]); });
+          }, function(err) { showGdError('Could not create submission folder: ' + err); onDone([]); });
+        }, function(err) { showGdError('Could not create vehicle folder: ' + err); onDone([]); });
+      }, function(err) { showGdError('Could not create date folder: ' + err); onDone([]); });
+    }, function(err) { showGdError('Could not create root Drive folder: ' + err); onDone([]); });
   }, function(err) {
-    console.error('Token refresh failed:', err);
+    showGdError('Token refresh failed: ' + err);
     onDone([]);
   });
 }
